@@ -1,12 +1,13 @@
 '''
-Business: Download YouTube videos and return stream URLs with quality options
+Business: Download YouTube videos and return download links with quality options
 Args: event with httpMethod GET/POST, queryStringParameters (url, quality)
-Returns: HTTP response with video stream URL or download link
+Returns: HTTP response with direct download URL
 '''
 
 import json
 import yt_dlp
 from typing import Dict, Any
+import base64
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     method: str = event.get('httpMethod', 'GET')
@@ -57,24 +58,17 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         'format': f'best[height<={format_selector}]/bestvideo[height<={format_selector}]+bestaudio/best',
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': False,
+        'ignoreerrors': False,
         'nocheckcertificate': True,
         'geo_bypass': True,
-        'ignoreerrors': False,
-        'no_check_certificate': True,
-        'prefer_insecure': True,
+        'socket_timeout': 30,
+        'source_address': '0.0.0.0',
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios', 'web'],
-                'player_skip': ['webpage', 'configs'],
+                'player_client': ['ios', 'android'],
+                'player_skip': ['webpage'],
             }
         },
-        'http_headers': {
-            'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; US) gzip',
-            'Accept': '*/*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate',
-        }
     }
     
     try:
@@ -100,46 +94,50 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 else:
                     video_url_result = requested_formats[0].get('url')
             elif not url and formats:
-                mp4_formats = [f for f in formats if f.get('ext') == 'mp4' and f.get('vcodec') != 'none']
+                suitable = [
+                    f for f in formats 
+                    if f.get('vcodec') != 'none' 
+                    and f.get('acodec') != 'none'
+                    and f.get('url')
+                ]
                 
-                if mp4_formats:
-                    combined = [f for f in mp4_formats if f.get('acodec') != 'none']
-                    if combined:
-                        best = max(combined, key=lambda x: (x.get('height', 0), x.get('tbr', 0)))
-                        video_url_result = best.get('url')
-                    else:
-                        video_only = [f for f in mp4_formats if f.get('vcodec') != 'none']
-                        audio_formats = [f for f in formats if f.get('acodec') != 'none']
-                        
-                        if video_only and audio_formats:
-                            best_video = max(video_only, key=lambda x: x.get('height', 0))
-                            best_audio = max(audio_formats, key=lambda x: x.get('abr', 0))
-                            video_url_result = best_video.get('url')
-                            audio_url_result = best_audio.get('url')
-                            separate_streams = True
-                        elif video_only:
-                            video_url_result = video_only[0].get('url')
+                if suitable:
+                    best = max(suitable, key=lambda x: (x.get('height', 0), x.get('tbr', 0)))
+                    video_url_result = best.get('url')
                 else:
-                    all_video = [f for f in formats if f.get('vcodec') != 'none']
-                    if all_video:
-                        best = max(all_video, key=lambda x: x.get('height', 0))
-                        video_url_result = best.get('url')
-                        audio_formats = [f for f in formats if f.get('acodec') != 'none']
+                    video_formats = [f for f in formats if f.get('vcodec') != 'none' and f.get('url')]
+                    audio_formats = [f for f in formats if f.get('acodec') != 'none' and f.get('url')]
+                    
+                    if video_formats:
+                        best_video = max(video_formats, key=lambda x: x.get('height', 0))
+                        video_url_result = best_video.get('url')
+                        
                         if audio_formats:
-                            audio_url_result = max(audio_formats, key=lambda x: x.get('abr', 0)).get('url')
+                            best_audio = max(audio_formats, key=lambda x: x.get('abr', 0))
+                            audio_url_result = best_audio.get('url')
                             separate_streams = True
             
             if not video_url_result:
                 raise Exception('Не удалось получить ссылку на видео')
             
+            video_proxy = f"https://functions.poehali.dev/296e7429-44ee-41f6-ba5f-880dc3456b3c?url={base64.urlsafe_b64encode(video_url_result.encode()).decode()}"
+            audio_proxy = None
+            
+            if audio_url_result:
+                audio_proxy = f"https://functions.poehali.dev/296e7429-44ee-41f6-ba5f-880dc3456b3c?url={base64.urlsafe_b64encode(audio_url_result.encode()).decode()}"
+            
             result = {
                 'title': info.get('title', 'Unknown'),
                 'thumbnail': info.get('thumbnail'),
                 'duration': info.get('duration', 0),
-                'video_url': video_url_result,
-                'audio_url': audio_url_result,
+                'video_url': video_proxy,
+                'audio_url': audio_proxy,
+                'direct_video_url': video_url_result,
+                'direct_audio_url': audio_url_result,
                 'separate_streams': separate_streams,
-                'quality': f"{info.get('height', '?')}p"
+                'quality': f"{info.get('height', '?')}p",
+                'uploader': info.get('uploader', 'Unknown'),
+                'view_count': info.get('view_count', 0)
             }
             
             return {

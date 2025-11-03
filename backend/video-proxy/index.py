@@ -5,6 +5,7 @@ Returns: Video stream with proper headers
 '''
 
 import requests
+import base64
 from typing import Dict, Any
 
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -36,6 +37,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             'body': '{"error": "URL parameter required"}',
             'isBase64Encoded': False
         }
+    
+    try:
+        video_url = base64.urlsafe_b64decode(video_url.encode()).decode()
+    except:
+        pass
     
     headers = {}
     range_header = event.get('headers', {}).get('Range') or event.get('headers', {}).get('range')
