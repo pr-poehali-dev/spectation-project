@@ -54,27 +54,26 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     format_selector = quality_map.get(quality, '720')
     
     ydl_opts = {
-        'format': f'bestvideo[height<={format_selector}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={format_selector}]+bestaudio/best[height<={format_selector}]/best',
-        'quiet': False,
-        'no_warnings': False,
+        'format': f'best[height<={format_selector}]/bestvideo[height<={format_selector}]+bestaudio/best',
+        'quiet': True,
+        'no_warnings': True,
         'extract_flat': False,
         'nocheckcertificate': True,
         'geo_bypass': True,
-        'age_limit': None,
+        'ignoreerrors': False,
+        'no_check_certificate': True,
+        'prefer_insecure': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'web'],
-                'skip': ['hls', 'dash']
+                'player_client': ['android', 'ios', 'web'],
+                'player_skip': ['webpage', 'configs'],
             }
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-us,en;q=0.5',
+            'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; US) gzip',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
             'Accept-Encoding': 'gzip, deflate',
-            'DNT': '1',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
         }
     }
     
@@ -93,31 +92,42 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             audio_url_result = None
             separate_streams = False
             
-            if requested_formats and len(requested_formats) == 2:
-                video_url_result = requested_formats[0].get('url')
-                audio_url_result = requested_formats[1].get('url')
-                separate_streams = True
-            elif not url and formats:
-                suitable_formats = [
-                    f for f in formats 
-                    if f.get('vcodec') != 'none' 
-                    and f.get('acodec') != 'none'
-                    and f.get('ext') == 'mp4'
-                ]
-                
-                if suitable_formats:
-                    best = max(suitable_formats, key=lambda x: x.get('height', 0))
-                    video_url_result = best.get('url')
+            if requested_formats and len(requested_formats) >= 1:
+                if len(requested_formats) == 2:
+                    video_url_result = requested_formats[0].get('url')
+                    audio_url_result = requested_formats[1].get('url')
+                    separate_streams = True
                 else:
-                    video_only = [f for f in formats if f.get('vcodec') != 'none' and f.get('ext') == 'mp4']
-                    audio_only = [f for f in formats if f.get('acodec') != 'none']
-                    
-                    if video_only and audio_only:
-                        best_video = max(video_only, key=lambda x: x.get('height', 0))
-                        best_audio = max(audio_only, key=lambda x: x.get('abr', 0))
-                        video_url_result = best_video.get('url')
-                        audio_url_result = best_audio.get('url')
-                        separate_streams = True
+                    video_url_result = requested_formats[0].get('url')
+            elif not url and formats:
+                mp4_formats = [f for f in formats if f.get('ext') == 'mp4' and f.get('vcodec') != 'none']
+                
+                if mp4_formats:
+                    combined = [f for f in mp4_formats if f.get('acodec') != 'none']
+                    if combined:
+                        best = max(combined, key=lambda x: (x.get('height', 0), x.get('tbr', 0)))
+                        video_url_result = best.get('url')
+                    else:
+                        video_only = [f for f in mp4_formats if f.get('vcodec') != 'none']
+                        audio_formats = [f for f in formats if f.get('acodec') != 'none']
+                        
+                        if video_only and audio_formats:
+                            best_video = max(video_only, key=lambda x: x.get('height', 0))
+                            best_audio = max(audio_formats, key=lambda x: x.get('abr', 0))
+                            video_url_result = best_video.get('url')
+                            audio_url_result = best_audio.get('url')
+                            separate_streams = True
+                        elif video_only:
+                            video_url_result = video_only[0].get('url')
+                else:
+                    all_video = [f for f in formats if f.get('vcodec') != 'none']
+                    if all_video:
+                        best = max(all_video, key=lambda x: x.get('height', 0))
+                        video_url_result = best.get('url')
+                        audio_formats = [f for f in formats if f.get('acodec') != 'none']
+                        if audio_formats:
+                            audio_url_result = max(audio_formats, key=lambda x: x.get('abr', 0)).get('url')
+                            separate_streams = True
             
             if not video_url_result:
                 raise Exception('Не удалось получить ссылку на видео')
@@ -142,21 +152,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'isBase64Encoded': False
             }
             
-    except yt_dlp.utils.DownloadError as e:
-        error_msg = str(e)
-        if 'unavailable' in error_msg.lower():
-            error_msg = 'Видео недоступно или приватное. Попробуйте другое видео.'
-        elif 'age' in error_msg.lower():
-            error_msg = 'Видео имеет возрастные ограничения и не может быть загружено.'
-        return {
-            'statusCode': 400,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps({'error': error_msg}),
-            'isBase64Encoded': False
-        }
     except Exception as e:
         return {
             'statusCode': 500,
@@ -164,6 +159,6 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            'body': json.dumps({'error': f'Ошибка при обработке видео: {str(e)}'}),
+            'body': json.dumps({'error': 'Не удалось загрузить видео. Проверьте ссылку и попробуйте снова.'}),
             'isBase64Encoded': False
         }
