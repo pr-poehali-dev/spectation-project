@@ -151,8 +151,13 @@ const Index = () => {
                   autoPlay
                   className="w-full h-full"
                   poster={videoData.thumbnail}
+                  crossOrigin="anonymous"
+                  preload="metadata"
                 >
-                  <source src={videoData.video_url} type="video/mp4" />
+                  <source 
+                    src={`https://functions.poehali.dev/296e7429-44ee-41f6-ba5f-880dc3456b3c?url=${encodeURIComponent(videoData.video_url)}`} 
+                    type="video/mp4" 
+                  />
                   Ваш браузер не поддерживает воспроизведение видео.
                 </video>
               </div>
