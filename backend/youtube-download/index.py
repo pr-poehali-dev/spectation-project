@@ -54,17 +54,27 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     format_selector = quality_map.get(quality, '720')
     
     ydl_opts = {
-        'format': f'bestvideo[height<={format_selector}][ext=mp4]+bestaudio[ext=m4a]/best[height<={format_selector}][ext=mp4]/best',
+        'format': f'bestvideo[height<={format_selector}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={format_selector}]+bestaudio/best[height<={format_selector}]/best',
         'quiet': False,
         'no_warnings': False,
         'extract_flat': False,
         'nocheckcertificate': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'referer': 'https://www.youtube.com/',
-        'headers': {
+        'geo_bypass': True,
+        'age_limit': None,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+                'skip': ['hls', 'dash']
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'en-us,en;q=0.5',
-            'Sec-Fetch-Mode': 'navigate',
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
         }
     }
     
