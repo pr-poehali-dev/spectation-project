@@ -14,7 +14,22 @@
       "method": "POST",
       "path": "/",
       "body": {
+        "action": "download",
         "quality": "720p"
+      },
+      "expectedStatus": 400,
+      "expectedBody": {
+        "error": "string"
+      },
+      "bodyMatcher": "partial"
+    },
+    {
+      "name": "Test search missing query",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "action": "search",
+        "max_results": 5
       },
       "expectedStatus": 400,
       "expectedBody": {

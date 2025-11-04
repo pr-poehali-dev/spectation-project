@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Icon from "@/components/ui/icon";
 import { useToast } from "@/hooks/use-toast";
 import videojs from 'video.js';
@@ -15,6 +16,8 @@ interface VideoFormat {
   height: number;
   fps: number;
   url: string;
+  ext: string;
+  filesize: number;
 }
 
 interface VideoData {
@@ -32,14 +35,29 @@ interface VideoData {
   description: string;
   upload_date: string;
   formats: VideoFormat[];
+  channel: string;
+}
+
+interface SearchResult {
+  id: string;
+  title: string;
+  url: string;
+  thumbnail: string;
+  duration: number;
+  uploader: string;
+  view_count: number;
+  description: string;
 }
 
 const Index = () => {
   const [videoUrl, setVideoUrl] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [quality, setQuality] = useState("720p");
   const [videoData, setVideoData] = useState<VideoData | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [showDescription, setShowDescription] = useState(false);
+  const [activeTab, setActiveTab] = useState("download");
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<any>(null);
   const { toast } = useToast();
@@ -114,6 +132,13 @@ const Index = () => {
     return `${day}.${month}.${year}`;
   };
 
+  const formatFileSize = (bytes: number) => {
+    if (!bytes) return '';
+    if (bytes >= 1073741824) return `${(bytes / 1073741824).toFixed(2)} GB`;
+    if (bytes >= 1048576) return `${(bytes / 1048576).toFixed(2)} MB`;
+    return `${(bytes / 1024).toFixed(2)} KB`;
+  };
+
   const handleDownload = async (url: string, filename: string) => {
     try {
       const response = await fetch(url);
@@ -165,6 +190,7 @@ const Index = () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          action: "download",
           url: videoUrl,
           quality: quality,
         }),
@@ -192,6 +218,63 @@ const Index = () => {
     }
   };
 
+  const handleSearch = async () => {
+    if (!searchQuery) {
+      toast({
+        title: "Ошибка",
+        description: "Введите поисковый запрос",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    setSearchResults([]);
+
+    try {
+      const response = await fetch("https://functions.poehali.dev/ffd1c2de-6c6e-4542-aa4f-9b15b312a383", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "search",
+          query: searchQuery,
+          max_results: 20,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Ошибка поиска");
+      }
+
+      setSearchResults(data.results);
+      toast({
+        title: "Успешно",
+        description: `Найдено ${data.count} видео`,
+      });
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: error instanceof Error ? error.message : "Не удалось выполнить поиск",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVideoClick = (url: string) => {
+    setVideoUrl(url);
+    setActiveTab("download");
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      handleLoadVideo();
+    }, 100);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/5">
       <header className="sticky top-0 z-50 border-b border-border bg-card/95 backdrop-blur-xl supports-[backdrop-filter]:bg-card/80 shadow-sm">
@@ -216,218 +299,309 @@ const Index = () => {
 
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto space-y-6">
-          <Card className="border-border bg-card/80 backdrop-blur-sm shadow-lg">
-            <CardHeader className="pb-4">
-              <div className="flex items-start justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-foreground text-xl">
-                    <Icon name="Link" size={22} />
-                    Загрузить видео с YouTube
-                  </CardTitle>
-                  <CardDescription className="mt-1">
-                    Вставьте ссылку на любое видео - поддерживаются все форматы YouTube
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Icon name="Link2" size={16} />
-                  Ссылка на YouTube видео
-                </label>
-                <Input
-                  type="text"
-                  placeholder="https://www.youtube.com/watch?v=... или https://youtu.be/..."
-                  value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
-                  className="bg-background/50 border-input text-foreground text-base h-12"
-                  disabled={loading}
-                  onKeyDown={(e) => e.key === 'Enter' && handleLoadVideo()}
-                />
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2 md:col-span-2">
-                  <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                    <Icon name="Tv" size={16} />
-                    Качество видео
-                  </label>
-                  <Select value={quality} onValueChange={setQuality} disabled={loading}>
-                    <SelectTrigger className="bg-background/50 border-input text-foreground h-12">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="360p">
-                        <span className="flex items-center gap-2">
-                          360p - Базовое качество
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="480p">
-                        <span className="flex items-center gap-2">
-                          480p - Стандартное
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="720p">
-                        <span className="flex items-center gap-2">
-                          720p - HD качество
-                        </span>
-                      </SelectItem>
-                      <SelectItem value="1080p">
-                        <span className="flex items-center gap-2">
-                          1080p - Full HD
-                        </span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <Button 
-                  onClick={handleLoadVideo}
-                  className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground h-12 mt-auto shadow-lg"
-                  size="lg"
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <>
-                      <Icon name="Loader2" size={20} className="mr-2 animate-spin" />
-                      Загрузка...
-                    </>
-                  ) : (
-                    <>
-                      <Icon name="Download" size={20} className="mr-2" />
-                      Загрузить
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsTrigger value="download" className="flex items-center gap-2">
+                <Icon name="Download" size={18} />
+                Скачать видео
+              </TabsTrigger>
+              <TabsTrigger value="search" className="flex items-center gap-2">
+                <Icon name="Search" size={18} />
+                Поиск видео
+              </TabsTrigger>
+            </TabsList>
 
-          {videoData && (
-            <>
-              <Card className="border-border bg-card/80 backdrop-blur-sm overflow-hidden shadow-xl">
-                <div className="aspect-video w-full bg-black relative">
-                  <video
-                    ref={videoRef}
-                    className="video-js vjs-theme-fantasy vjs-big-play-centered w-full h-full"
-                    poster={videoData.thumbnail}
-                  >
-                    <source 
-                      src={videoData.video_url} 
-                      type="video/mp4" 
+            <TabsContent value="download" className="space-y-6">
+              <Card className="border-border bg-card/80 backdrop-blur-sm shadow-lg">
+                <CardHeader className="pb-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-foreground text-xl">
+                        <Icon name="Link" size={22} />
+                        Загрузить видео с YouTube
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        Любые ссылки: youtube.com, youtu.be, shorts, embed — все форматы поддерживаются
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                      <Icon name="Link2" size={16} />
+                      Ссылка на YouTube видео
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="https://www.youtube.com/watch?v=... или https://youtu.be/... или /shorts/..."
+                      value={videoUrl}
+                      onChange={(e) => setVideoUrl(e.target.value)}
+                      className="bg-background/50 border-input text-foreground text-base h-12"
+                      disabled={loading}
+                      onKeyDown={(e) => e.key === 'Enter' && handleLoadVideo()}
                     />
-                  </video>
-                </div>
-                
-                <CardContent className="p-6 space-y-5">
-                  <div>
-                    <h2 className="text-2xl font-bold text-foreground mb-3 leading-tight">
-                      {videoData.title}
-                    </h2>
-                    <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-4">
-                      <Badge variant="outline" className="flex items-center gap-1.5 px-3 py-1">
-                        <Icon name="User" size={14} />
-                        {videoData.uploader}
-                      </Badge>
-                      <Badge variant="outline" className="flex items-center gap-1.5 px-3 py-1">
-                        <Icon name="Eye" size={14} />
-                        {formatViews(videoData.view_count)} просмотров
-                      </Badge>
-                      <Badge variant="outline" className="flex items-center gap-1.5 px-3 py-1">
-                        <Icon name="Clock" size={14} />
-                        {formatDuration(videoData.duration)}
-                      </Badge>
-                      <Badge variant="outline" className="flex items-center gap-1.5 px-3 py-1">
-                        <Icon name="Monitor" size={14} />
-                        {videoData.quality}
-                      </Badge>
-                      {videoData.upload_date && (
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-medium text-foreground flex items-center gap-2">
+                        <Icon name="Tv" size={16} />
+                        Качество видео
+                      </label>
+                      <Select value={quality} onValueChange={setQuality} disabled={loading}>
+                        <SelectTrigger className="bg-background/50 border-input text-foreground h-12">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="360p">360p - Базовое качество</SelectItem>
+                          <SelectItem value="480p">480p - Стандартное</SelectItem>
+                          <SelectItem value="720p">720p - HD качество</SelectItem>
+                          <SelectItem value="1080p">1080p - Full HD</SelectItem>
+                          <SelectItem value="1440p">1440p - 2K</SelectItem>
+                          <SelectItem value="2160p">2160p - 4K</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <Button 
+                      onClick={handleLoadVideo}
+                      className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground h-12 mt-auto shadow-lg"
+                      size="lg"
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <>
+                          <Icon name="Loader2" size={20} className="mr-2 animate-spin" />
+                          Загрузка...
+                        </>
+                      ) : (
+                        <>
+                          <Icon name="Download" size={20} className="mr-2" />
+                          Загрузить
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {videoData && (
+                <Card className="border-border bg-card/80 backdrop-blur-sm overflow-hidden shadow-xl">
+                  <div className="aspect-video w-full bg-black relative">
+                    <video
+                      ref={videoRef}
+                      className="video-js vjs-theme-fantasy vjs-big-play-centered w-full h-full"
+                      poster={videoData.thumbnail}
+                    >
+                      <source 
+                        src={videoData.video_url} 
+                        type="video/mp4" 
+                      />
+                    </video>
+                  </div>
+                  
+                  <CardContent className="p-6 space-y-5">
+                    <div>
+                      <h2 className="text-2xl font-bold text-foreground mb-3 leading-tight">
+                        {videoData.title}
+                      </h2>
+                      <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mb-4">
                         <Badge variant="outline" className="flex items-center gap-1.5 px-3 py-1">
-                          <Icon name="Calendar" size={14} />
-                          {formatDate(videoData.upload_date)}
+                          <Icon name="User" size={14} />
+                          {videoData.uploader}
                         </Badge>
+                        <Badge variant="outline" className="flex items-center gap-1.5 px-3 py-1">
+                          <Icon name="Eye" size={14} />
+                          {formatViews(videoData.view_count)} просмотров
+                        </Badge>
+                        <Badge variant="outline" className="flex items-center gap-1.5 px-3 py-1">
+                          <Icon name="Clock" size={14} />
+                          {formatDuration(videoData.duration)}
+                        </Badge>
+                        <Badge variant="outline" className="flex items-center gap-1.5 px-3 py-1">
+                          <Icon name="Monitor" size={14} />
+                          {videoData.quality}
+                        </Badge>
+                        {videoData.upload_date && (
+                          <Badge variant="outline" className="flex items-center gap-1.5 px-3 py-1">
+                            <Icon name="Calendar" size={14} />
+                            {formatDate(videoData.upload_date)}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {videoData.description && (
+                        <div className="mt-4">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowDescription(!showDescription)}
+                            className="text-muted-foreground hover:text-foreground p-0 h-auto"
+                          >
+                            <Icon name={showDescription ? "ChevronUp" : "ChevronDown"} size={16} className="mr-1" />
+                            {showDescription ? "Скрыть" : "Показать"} описание
+                          </Button>
+                          {showDescription && (
+                            <p className="mt-3 text-sm text-muted-foreground whitespace-pre-wrap bg-secondary/20 p-4 rounded-lg border border-border/50">
+                              {videoData.description.slice(0, 500)}
+                              {videoData.description.length > 500 && "..."}
+                            </p>
+                          )}
+                        </div>
                       )}
                     </div>
 
-                    {videoData.description && (
-                      <div className="mt-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowDescription(!showDescription)}
-                          className="text-muted-foreground hover:text-foreground p-0 h-auto"
-                        >
-                          <Icon name={showDescription ? "ChevronUp" : "ChevronDown"} size={16} className="mr-1" />
-                          {showDescription ? "Скрыть" : "Показать"} описание
-                        </Button>
-                        {showDescription && (
-                          <p className="mt-3 text-sm text-muted-foreground whitespace-pre-wrap bg-secondary/20 p-4 rounded-lg border border-border/50">
-                            {videoData.description.slice(0, 500)}
-                            {videoData.description.length > 500 && "..."}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap gap-3">
-                    <Button
-                      onClick={() => handleDownload(videoData.direct_video_url, `${videoData.title}.mp4`)}
-                      className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-md"
-                    >
-                      <Icon name="Download" size={18} className="mr-2" />
-                      Скачать видео ({videoData.quality})
-                    </Button>
-                    
-                    {videoData.direct_audio_url && (
+                    <div className="flex flex-wrap gap-3">
                       <Button
-                        onClick={() => handleDownload(videoData.direct_audio_url!, `${videoData.title}.mp3`)}
-                        className="bg-gradient-to-r from-secondary to-secondary/80 hover:from-secondary/90 hover:to-secondary/70 text-secondary-foreground shadow-md"
+                        onClick={() => handleDownload(videoData.direct_video_url, `${videoData.title}.mp4`)}
+                        className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground shadow-md"
                       >
-                        <Icon name="Music" size={18} className="mr-2" />
-                        Скачать аудио
+                        <Icon name="Download" size={18} className="mr-2" />
+                        Скачать видео ({videoData.quality})
                       </Button>
+                      
+                      {videoData.direct_audio_url && (
+                        <Button
+                          onClick={() => handleDownload(videoData.direct_audio_url!, `${videoData.title}.mp3`)}
+                          className="bg-gradient-to-r from-secondary to-secondary/80 hover:from-secondary/90 hover:to-secondary/70 text-secondary-foreground shadow-md"
+                        >
+                          <Icon name="Music" size={18} className="mr-2" />
+                          Скачать аудио
+                        </Button>
+                      )}
+                      
+                      <Button
+                        onClick={() => window.open(videoData.direct_video_url, '_blank')}
+                        variant="outline"
+                        className="border-border shadow-sm"
+                      >
+                        <Icon name="ExternalLink" size={18} className="mr-2" />
+                        Открыть напрямую
+                      </Button>
+                    </div>
+
+                    {videoData.formats && videoData.formats.length > 0 && (
+                      <div className="pt-4 border-t border-border">
+                        <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                          <Icon name="List" size={16} />
+                          Все доступные форматы ({videoData.formats.length})
+                        </h3>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                          {videoData.formats.map((format, idx) => (
+                            <Button
+                              key={idx}
+                              variant="secondary"
+                              size="sm"
+                              className="flex flex-col h-auto py-2 gap-0.5"
+                              onClick={() => {
+                                window.open(`https://functions.poehali.dev/296e7429-44ee-41f6-ba5f-880dc3456b3c?url=${format.url}`, '_blank');
+                              }}
+                            >
+                              <span className="font-bold">{format.height}p</span>
+                              <span className="text-xs text-muted-foreground">
+                                {format.fps ? `${format.fps}fps` : format.ext}
+                              </span>
+                              {format.filesize > 0 && (
+                                <span className="text-xs text-muted-foreground">
+                                  {formatFileSize(format.filesize)}
+                                </span>
+                              )}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
                     )}
-                    
-                    <Button
-                      onClick={() => window.open(videoData.direct_video_url, '_blank')}
-                      variant="outline"
-                      className="border-border shadow-sm"
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            <TabsContent value="search" className="space-y-6">
+              <Card className="border-border bg-card/80 backdrop-blur-sm shadow-lg">
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-foreground text-xl">
+                    <Icon name="Search" size={22} />
+                    Поиск видео на YouTube
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    Введите название видео, канала или ключевые слова
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-3">
+                    <Input
+                      type="text"
+                      placeholder="Введите поисковый запрос..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="bg-background/50 border-input text-foreground text-base h-12"
+                      disabled={loading}
+                      onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    />
+                    <Button 
+                      onClick={handleSearch}
+                      className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-primary-foreground h-12 shadow-lg px-8"
+                      disabled={loading}
                     >
-                      <Icon name="ExternalLink" size={18} className="mr-2" />
-                      Открыть напрямую
+                      {loading ? (
+                        <Icon name="Loader2" size={20} className="animate-spin" />
+                      ) : (
+                        <>
+                          <Icon name="Search" size={20} className="mr-2" />
+                          Найти
+                        </>
+                      )}
                     </Button>
                   </div>
-
-                  {videoData.formats && videoData.formats.length > 0 && (
-                    <div className="pt-4 border-t border-border">
-                      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-                        <Icon name="List" size={16} />
-                        Доступные качества
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        {videoData.formats.map((format, idx) => (
-                          <Badge 
-                            key={idx}
-                            variant="secondary"
-                            className="cursor-pointer hover:bg-secondary/80"
-                            onClick={() => {
-                              window.open(`https://functions.poehali.dev/296e7429-44ee-41f6-ba5f-880dc3456b3c?url=${format.url}`, '_blank');
-                            }}
-                          >
-                            {format.height}p {format.fps ? `${format.fps}fps` : ''}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
-            </>
-          )}
 
-          <div className="grid md:grid-cols-2 gap-6">
+              {searchResults.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {searchResults.map((result) => (
+                    <Card 
+                      key={result.id}
+                      className="border-border bg-card/80 backdrop-blur-sm hover:shadow-lg transition-all cursor-pointer overflow-hidden"
+                      onClick={() => handleVideoClick(result.url)}
+                    >
+                      <div className="relative aspect-video w-full bg-secondary/20">
+                        <img 
+                          src={result.thumbnail} 
+                          alt={result.title}
+                          className="w-full h-full object-cover"
+                        />
+                        {result.duration > 0 && (
+                          <Badge className="absolute bottom-2 right-2 bg-black/80 text-white">
+                            {formatDuration(result.duration)}
+                          </Badge>
+                        )}
+                      </div>
+                      <CardContent className="p-4">
+                        <h3 className="font-semibold text-foreground line-clamp-2 mb-2 leading-tight">
+                          {result.title}
+                        </h3>
+                        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Icon name="User" size={12} />
+                            <span className="truncate">{result.uploader}</span>
+                          </div>
+                          {result.view_count > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Icon name="Eye" size={12} />
+                              <span>{formatViews(result.view_count)} просмотров</span>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+
+          <div className="grid md:grid-cols-2 gap-6 mt-8">
             <Card className="border-border bg-card/80 backdrop-blur-sm shadow-lg">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-foreground text-lg">
@@ -450,12 +624,12 @@ const Index = () => {
                 
                 <div className="flex gap-3 items-start">
                   <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Icon name="Gauge" size={16} className="text-primary" />
+                    <Icon name="Link2" size={16} className="text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-foreground text-sm">Высокая скорость</h4>
+                    <h4 className="font-semibold text-foreground text-sm">Любые ссылки</h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Оптимизированная загрузка видео
+                      YouTube, Shorts, youtu.be, embed — все форматы
                     </p>
                   </div>
                 </div>
@@ -474,12 +648,12 @@ const Index = () => {
 
                 <div className="flex gap-3 items-start">
                   <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Icon name="Layers" size={16} className="text-primary" />
+                    <Icon name="Search" size={16} className="text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-foreground text-sm">Все форматы</h4>
+                    <h4 className="font-semibold text-foreground text-sm">Мощный поиск</h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Поддержка видео любой длительности и качества
+                      Находите видео по названию прямо в приложении
                     </p>
                   </div>
                 </div>
@@ -490,54 +664,54 @@ const Index = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-foreground text-lg">
                   <Icon name="Info" size={20} />
-                  Как использовать
+                  Поддерживаемые форматы
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex gap-3 items-start">
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                    <span className="text-primary font-bold text-sm">1</span>
+                    <Icon name="Check" size={16} className="text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-foreground text-sm">Скопируйте ссылку</h4>
+                    <h4 className="font-semibold text-foreground text-sm">Обычные видео</h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Любая ссылка с YouTube: обычная, shorts, плейлист
+                      youtube.com/watch?v=...
                     </p>
                   </div>
                 </div>
                 
                 <div className="flex gap-3 items-start">
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                    <span className="text-primary font-bold text-sm">2</span>
+                    <Icon name="Check" size={16} className="text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-foreground text-sm">Выберите качество</h4>
+                    <h4 className="font-semibold text-foreground text-sm">Shorts</h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      От 360p до 1080p Full HD
+                      youtube.com/shorts/...
                     </p>
                   </div>
                 </div>
                 
                 <div className="flex gap-3 items-start">
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                    <span className="text-primary font-bold text-sm">3</span>
+                    <Icon name="Check" size={16} className="text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-foreground text-sm">Смотрите или скачивайте</h4>
+                    <h4 className="font-semibold text-foreground text-sm">Короткие ссылки</h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Мощный плеер или сохранение на устройство
+                      youtu.be/...
                     </p>
                   </div>
                 </div>
 
                 <div className="flex gap-3 items-start">
                   <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                    <span className="text-primary font-bold text-sm">4</span>
+                    <Icon name="Check" size={16} className="text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-foreground text-sm">Управляйте просмотром</h4>
+                    <h4 className="font-semibold text-foreground text-sm">Качество до 4K</h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Изменяйте скорость от 0.5x до 2x
+                      От 360p до 2160p (4K)
                     </p>
                   </div>
                 </div>
