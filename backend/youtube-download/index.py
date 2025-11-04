@@ -61,14 +61,23 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         'ignoreerrors': False,
         'nocheckcertificate': True,
         'geo_bypass': True,
-        'socket_timeout': 30,
+        'socket_timeout': 60,
+        'retries': 10,
+        'fragment_retries': 10,
         'source_address': '0.0.0.0',
         'extractor_args': {
             'youtube': {
-                'player_client': ['ios', 'android'],
-                'player_skip': ['webpage'],
+                'player_client': ['ios', 'android', 'web'],
+                'player_skip': ['webpage', 'configs'],
+                'skip': ['hls', 'dash'],
             }
         },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Sec-Fetch-Mode': 'navigate',
+        }
     }
     
     try:
@@ -137,7 +146,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 'separate_streams': separate_streams,
                 'quality': f"{info.get('height', '?')}p",
                 'uploader': info.get('uploader', 'Unknown'),
-                'view_count': info.get('view_count', 0)
+                'view_count': info.get('view_count', 0),
+                'description': info.get('description', ''),
+                'upload_date': info.get('upload_date', ''),
+                'formats': [{
+                    'quality': f.get('format_note', f.get('height', '?')),
+                    'height': f.get('height'),
+                    'fps': f.get('fps'),
+                    'url': base64.urlsafe_b64encode(f.get('url', '').encode()).decode() if f.get('url') else None
+                } for f in formats if f.get('vcodec') != 'none' and f.get('url') and f.get('height')][:8]
             }
             
             return {
