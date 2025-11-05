@@ -1,15 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import Icon from "@/components/ui/icon";
 import { useToast } from "@/hooks/use-toast";
-import videojs from 'video.js';
-import 'video.js/dist/video-js.css';
-import '@videojs/themes/dist/fantasy/index.css';
+import Plyr from "plyr-react";
+import "plyr-react/plyr.css";
 
 interface VideoFormat {
   quality: string;
@@ -58,54 +58,9 @@ const Index = () => {
   const [loading, setLoading] = useState(false);
   const [showDescription, setShowDescription] = useState(false);
   const [activeTab, setActiveTab] = useState("download");
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const playerRef = useRef<any>(null);
+  const [dialogVideo, setDialogVideo] = useState<VideoData | null>(null);
+  const [loadingDialog, setLoadingDialog] = useState(false);
   const { toast } = useToast();
-
-  useEffect(() => {
-    if (videoRef.current && videoData && !playerRef.current) {
-      playerRef.current = videojs(videoRef.current, {
-        controls: true,
-        fluid: true,
-        responsive: true,
-        preload: 'auto',
-        playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2],
-        controlBar: {
-          children: [
-            'playToggle',
-            'volumePanel',
-            'currentTimeDisplay',
-            'timeDivider',
-            'durationDisplay',
-            'progressControl',
-            'remainingTimeDisplay',
-            'playbackRateMenuButton',
-            'fullscreenToggle',
-          ],
-        },
-        html5: {
-          vhs: {
-            overrideNative: true,
-            enableLowInitialPlaylist: true,
-          },
-          nativeVideoTracks: false,
-          nativeAudioTracks: false,
-          nativeTextTracks: false,
-        },
-      });
-
-      playerRef.current.on('error', () => {
-        console.error('Video.js error');
-      });
-    }
-
-    return () => {
-      if (playerRef.current) {
-        playerRef.current.dispose();
-        playerRef.current = null;
-      }
-    };
-  }, [videoData]);
 
   const formatViews = (views: number) => {
     if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M`;
@@ -173,11 +128,6 @@ const Index = () => {
         variant: "destructive",
       });
       return;
-    }
-
-    if (playerRef.current) {
-      playerRef.current.dispose();
-      playerRef.current = null;
     }
 
     setLoading(true);
@@ -271,8 +221,49 @@ const Index = () => {
     setActiveTab("download");
     setTimeout(() => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      handleLoadVideo();
     }, 100);
+  };
+
+  const handleWatchInSearch = async (url: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLoadingDialog(true);
+    setDialogVideo(null);
+
+    try {
+      const response = await fetch("https://functions.poehali.dev/ffd1c2de-6c6e-4542-aa4f-9b15b312a383", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "download",
+          url: url,
+          quality: "720p",
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Ошибка при загрузке видео");
+      }
+
+      setDialogVideo(data);
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: error instanceof Error ? error.message : "Не удалось загрузить видео",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingDialog(false);
+    }
+  };
+
+  const plyrOptions = {
+    controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
+    settings: ['speed', 'quality'],
+    speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
   };
 
   return (
@@ -388,17 +379,20 @@ const Index = () => {
 
               {videoData && (
                 <Card className="border-border bg-card/80 backdrop-blur-sm overflow-hidden shadow-xl">
-                  <div className="aspect-video w-full bg-black relative">
-                    <video
-                      ref={videoRef}
-                      className="video-js vjs-theme-fantasy vjs-big-play-centered w-full h-full"
-                      poster={videoData.thumbnail}
-                    >
-                      <source 
-                        src={videoData.video_url} 
-                        type="video/mp4" 
-                      />
-                    </video>
+                  <div className="aspect-video w-full bg-black">
+                    <Plyr
+                      source={{
+                        type: 'video',
+                        sources: [
+                          {
+                            src: videoData.video_url,
+                            type: 'video/mp4',
+                          },
+                        ],
+                        poster: videoData.thumbnail,
+                      }}
+                      options={plyrOptions}
+                    />
                   </div>
                   
                   <CardContent className="p-6 space-y-5">
@@ -562,15 +556,22 @@ const Index = () => {
                   {searchResults.map((result) => (
                     <Card 
                       key={result.id}
-                      className="border-border bg-card/80 backdrop-blur-sm hover:shadow-lg transition-all cursor-pointer overflow-hidden"
-                      onClick={() => handleVideoClick(result.url)}
+                      className="border-border bg-card/80 backdrop-blur-sm hover:shadow-lg transition-all overflow-hidden group"
                     >
-                      <div className="relative aspect-video w-full bg-secondary/20">
+                      <div 
+                        className="relative aspect-video w-full bg-secondary/20 cursor-pointer" 
+                        onClick={(e) => handleWatchInSearch(result.url, e)}
+                      >
                         <img 
                           src={result.thumbnail} 
                           alt={result.title}
                           className="w-full h-full object-cover"
                         />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <div className="bg-primary rounded-full p-4">
+                            <Icon name="Play" size={32} className="text-primary-foreground" />
+                          </div>
+                        </div>
                         {result.duration > 0 && (
                           <Badge className="absolute bottom-2 right-2 bg-black/80 text-white">
                             {formatDuration(result.duration)}
@@ -581,7 +582,7 @@ const Index = () => {
                         <h3 className="font-semibold text-foreground line-clamp-2 mb-2 leading-tight">
                           {result.title}
                         </h3>
-                        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+                        <div className="flex flex-col gap-1 text-xs text-muted-foreground mb-3">
                           <div className="flex items-center gap-1">
                             <Icon name="User" size={12} />
                             <span className="truncate">{result.uploader}</span>
@@ -593,6 +594,15 @@ const Index = () => {
                             </div>
                           )}
                         </div>
+                        <Button 
+                          onClick={() => handleVideoClick(result.url)}
+                          variant="outline" 
+                          size="sm" 
+                          className="w-full"
+                        >
+                          <Icon name="Download" size={14} className="mr-2" />
+                          Скачать
+                        </Button>
                       </CardContent>
                     </Card>
                   ))}
@@ -639,9 +649,9 @@ const Index = () => {
                     <Icon name="Film" size={16} className="text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-foreground text-sm">Video.js плеер</h4>
+                    <h4 className="font-semibold text-foreground text-sm">Plyr плеер</h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Профессиональный плеер с управлением скоростью
+                      Современный и быстрый видеоплеер
                     </p>
                   </div>
                 </div>
@@ -651,9 +661,9 @@ const Index = () => {
                     <Icon name="Search" size={16} className="text-primary" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-foreground text-sm">Мощный поиск</h4>
+                    <h4 className="font-semibold text-foreground text-sm">Просмотр прямо в поиске</h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Находите видео по названию прямо в приложении
+                      Смотрите видео без перехода на другие страницы
                     </p>
                   </div>
                 </div>
@@ -720,6 +730,72 @@ const Index = () => {
           </div>
         </div>
       </main>
+
+      <Dialog open={!!dialogVideo || loadingDialog} onOpenChange={() => setDialogVideo(null)}>
+        <DialogContent className="max-w-4xl p-0 bg-card">
+          {loadingDialog && (
+            <div className="flex items-center justify-center h-[500px]">
+              <Icon name="Loader2" size={48} className="animate-spin text-primary" />
+            </div>
+          )}
+          {dialogVideo && !loadingDialog && (
+            <div>
+              <div className="aspect-video w-full bg-black">
+                <Plyr
+                  source={{
+                    type: 'video',
+                    sources: [
+                      {
+                        src: dialogVideo.video_url,
+                        type: 'video/mp4',
+                      },
+                    ],
+                    poster: dialogVideo.thumbnail,
+                  }}
+                  options={plyrOptions}
+                />
+              </div>
+              <div className="p-6 space-y-4">
+                <h2 className="text-xl font-bold text-foreground leading-tight">
+                  {dialogVideo.title}
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline" className="flex items-center gap-1.5">
+                    <Icon name="User" size={12} />
+                    {dialogVideo.uploader}
+                  </Badge>
+                  <Badge variant="outline" className="flex items-center gap-1.5">
+                    <Icon name="Eye" size={12} />
+                    {formatViews(dialogVideo.view_count)} просмотров
+                  </Badge>
+                  <Badge variant="outline" className="flex items-center gap-1.5">
+                    <Icon name="Monitor" size={12} />
+                    {dialogVideo.quality}
+                  </Badge>
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => handleDownload(dialogVideo.direct_video_url, `${dialogVideo.title}.mp4`)}
+                    className="bg-primary text-primary-foreground"
+                  >
+                    <Icon name="Download" size={16} className="mr-2" />
+                    Скачать видео
+                  </Button>
+                  {dialogVideo.direct_audio_url && (
+                    <Button
+                      onClick={() => handleDownload(dialogVideo.direct_audio_url!, `${dialogVideo.title}.mp3`)}
+                      variant="secondary"
+                    >
+                      <Icon name="Music" size={16} className="mr-2" />
+                      Скачать аудио
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <footer className="border-t border-border mt-16 py-8 bg-card/50">
         <div className="container mx-auto px-4 text-center">
