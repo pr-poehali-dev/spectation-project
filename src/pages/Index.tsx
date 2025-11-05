@@ -11,6 +11,24 @@ import { useToast } from "@/hooks/use-toast";
 import Plyr from "plyr-react";
 import "plyr-react/plyr.css";
 
+interface PlyrSource {
+  type: string;
+  sources: Array<{
+    src: string;
+    type: string;
+  }>;
+  poster?: string;
+}
+
+interface PlyrOptions {
+  controls?: string[];
+  settings?: string[];
+  speed?: {
+    selected: number;
+    options: number[];
+  };
+}
+
 interface VideoFormat {
   quality: string;
   height: number;
@@ -260,11 +278,17 @@ const Index = () => {
     }
   };
 
-  const plyrOptions = {
+  const plyrOptions: PlyrOptions = {
     controls: ['play-large', 'play', 'progress', 'current-time', 'mute', 'volume', 'settings', 'fullscreen'],
     settings: ['speed', 'quality'],
     speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
   };
+
+  const createPlyrSource = (videoUrl: string, thumbnail?: string): PlyrSource => ({
+    type: 'video',
+    sources: [{ src: videoUrl, type: 'video/mp4' }],
+    poster: thumbnail,
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-secondary/5">
@@ -381,16 +405,7 @@ const Index = () => {
                 <Card className="border-border bg-card/80 backdrop-blur-sm overflow-hidden shadow-xl">
                   <div className="aspect-video w-full bg-black">
                     <Plyr
-                      source={{
-                        type: 'video',
-                        sources: [
-                          {
-                            src: videoData.video_url,
-                            type: 'video/mp4',
-                          },
-                        ],
-                        poster: videoData.thumbnail,
-                      }}
+                      source={createPlyrSource(videoData.video_url, videoData.thumbnail)}
                       options={plyrOptions}
                     />
                   </div>
@@ -742,16 +757,7 @@ const Index = () => {
             <div>
               <div className="aspect-video w-full bg-black">
                 <Plyr
-                  source={{
-                    type: 'video',
-                    sources: [
-                      {
-                        src: dialogVideo.video_url,
-                        type: 'video/mp4',
-                      },
-                    ],
-                    poster: dialogVideo.thumbnail,
-                  }}
+                  source={createPlyrSource(dialogVideo.video_url, dialogVideo.thumbnail)}
                   options={plyrOptions}
                 />
               </div>
