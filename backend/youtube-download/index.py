@@ -175,16 +175,18 @@ def handle_download(data: Dict[str, Any]) -> Dict[str, Any]:
         'age_limit': None,
         'extractor_args': {
             'youtube': {
-                'player_client': ['ios', 'android', 'web', 'mweb'],
-                'player_skip': ['webpage', 'configs'],
-                'skip': ['hls', 'dash'],
+                'player_client': ['ios', 'web'],
+                'player_skip': ['configs'],
             }
         },
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-us,en;q=0.5',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
             'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Site': 'none',
         }
     }
     
